@@ -323,8 +323,17 @@ curl -X POST "http://localhost:8080/api/v1/auth/login" \
 
 ---
 
+## 関連ドキュメント
+
+- [OpenAPI仕様書（Swagger形式）](../openapi/openapi.yaml) - 機械可読なAPI仕様
+- [データモデル文書](../../02_architecture/database/DM001_data_model.md) - データベース設計
+- [認証モジュール設計書](../../06_implementation/module_specifications/MS001_auth_module.md) - 実装詳細
+
+---
+
 ## 変更履歴
 
 | バージョン | 日付 | 変更者 | 変更内容 |
 |-----------|------|--------|---------|
 | 1.0.0 | 2025-12-14 | Devin AI | 初版作成 |
+| 1.0.1 | 2025-12-14 | Devin AI | OpenAPI仕様書へのリンクを追加 |
