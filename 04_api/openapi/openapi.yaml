@@ -1,0 +1,751 @@
+openapi: 3.0.3
+info:
+  title: EC Site Demo API
+  description: |
+    ECサイトデモアプリケーションのAPI仕様書です。
+    
+    ## 概要
+    このAPIは、ECサイトの認証機能と商品カテゴリ機能を提供します。
+    
+    ## 認証
+    認証が必要なエンドポイントでは、JWTトークンをAuthorizationヘッダーに含めてください。
+    
+    ```
+    Authorization: Bearer {access_token}
+    ```
+    
+    ## 関連ドキュメント
+    - [認証API仕様書](../endpoints/EP001_auth_api.md)
+    - [商品カテゴリAPI仕様書](../endpoints/EP002_product_api.md)
+    - [データモデル文書](../../02_architecture/database/DM001_data_model.md)
+  version: 1.0.0
+  contact:
+    name: EC Site Demo Team
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: 開発環境
+  - url: https://api.example.com
+    description: 本番環境
+
+tags:
+  - name: 認証
+    description: ユーザー認証に関するエンドポイント
+  - name: 商品カテゴリ
+    description: 商品カテゴリに関するエンドポイント
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags:
+        - 認証
+      summary: ユーザーログイン
+      description: |
+        メールアドレスとパスワードを使用してユーザー認証を行い、JWTトークンを発行します。
+        
+        ## トークン有効期限
+        - アクセストークン: 1時間（3600秒）
+        - リフレッシュトークン: 24時間（86400秒）
+        - rememberMe有効時: 上記の7倍
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              通常ログイン:
+                summary: 通常のログインリクエスト
+                value:
+                  email: user@example.com
+                  password: password123
+                  rememberMe: false
+              継続ログイン:
+                summary: ログイン状態を維持するリクエスト
+                value:
+                  email: user@example.com
+                  password: password123
+                  rememberMe: true
+      responses:
+        '200':
+          description: 認証成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+              example:
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                tokenType: Bearer
+                expiresIn: 3600
+                user:
+                  id: "1"
+                  name: テストユーザー
+                  email: user@example.com
+        '400':
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                errorCode: VALIDATION_ERROR
+                message: 入力値が不正です
+                fieldErrors:
+                  email: メールアドレスは必須です
+                  password: パスワードは6文字以上100文字以下で入力してください
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+        '401':
+          description: 認証失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                errorCode: AUTHENTICATION_FAILED
+                message: 認証情報が無効です
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          description: サーバー内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                errorCode: INTERNAL_SERVER_ERROR
+                message: サーバー内部エラーが発生しました
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+
+  /api/v1/products/categories:
+    get:
+      tags:
+        - 商品カテゴリ
+      summary: カテゴリ一覧取得
+      description: |
+        有効なカテゴリの一覧を表示順序でソートして取得します。
+        
+        ## レスポンス
+        - カテゴリは`displayOrder`の昇順でソートされます
+        - `isActive`がtrueのカテゴリのみ返却されます
+      operationId: getCategories
+      responses:
+        '200':
+          description: カテゴリ一覧取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryListResponse'
+              example:
+                success: true
+                message: カテゴリ一覧を取得しました
+                data:
+                  categories:
+                    - categoryCode: iphone
+                      displayName: iPhone
+                      displayOrder: 1
+                    - categoryCode: android
+                      displayName: Android
+                      displayOrder: 2
+                    - categoryCode: refurbished
+                      displayName: ドコモ認定リユース品
+                      displayOrder: 3
+                    - categoryCode: accessories
+                      displayName: アクセサリ
+                      displayOrder: 4
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          description: サーバー内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/products/categories/{categoryCode}:
+    get:
+      tags:
+        - 商品カテゴリ
+      summary: カテゴリ詳細取得
+      description: |
+        指定されたカテゴリコードに基づいて、カテゴリ情報と所属する商品一覧を取得します。
+        
+        ## ページネーション
+        - `page`: ページ番号（0始まり、デフォルト: 0）
+        - `size`: 1ページあたりの件数（デフォルト: 20、最大: 100）
+        
+        ## ソート
+        - `sort`: ソート対象フィールド（デフォルト: name）
+        - `order`: ソート順序（asc/desc、デフォルト: asc）
+        
+        ## 検索
+        - `keyword`: 商品名での部分一致検索
+      operationId: getCategoryDetail
+      parameters:
+        - name: categoryCode
+          in: path
+          required: true
+          description: カテゴリコード
+          schema:
+            type: string
+          example: iphone
+        - name: keyword
+          in: query
+          required: false
+          description: 検索キーワード（商品名での部分一致）
+          schema:
+            type: string
+            maxLength: 100
+          example: Pro
+        - name: page
+          in: query
+          required: false
+          description: ページ番号（0始まり）
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+        - name: size
+          in: query
+          required: false
+          description: 1ページあたりの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        - name: sort
+          in: query
+          required: false
+          description: ソート対象フィールド
+          schema:
+            type: string
+            default: name
+          example: name
+        - name: order
+          in: query
+          required: false
+          description: ソート順序
+          schema:
+            type: string
+            enum:
+              - asc
+              - desc
+            default: asc
+          example: asc
+      responses:
+        '200':
+          description: カテゴリ詳細取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryDetailResponse'
+              example:
+                success: true
+                message: カテゴリ詳細を取得しました
+                data:
+                  category:
+                    categoryCode: iphone
+                    displayName: iPhone
+                    heroImageUrl: https://example.com/images/iphone-hero.jpg
+                    leadText: 最新のiPhoneをお選びください
+                  products:
+                    - productId: 1
+                      productName: iPhone 16 Pro Max
+                      imageUrls:
+                        - https://example.com/images/iphone16promax.jpg
+                      monthlyPayment: 5500
+                      campaigns:
+                        - campaignCode: NEW
+                          badgeText: 新製品
+                      colorOptions:
+                        - name: ナチュラルチタニウム
+                          hex: "#C4B8A5"
+                      storageOptions:
+                        - 256GB
+                        - 512GB
+                        - 1TB
+                meta:
+                  pagination:
+                    currentPage: 0
+                    pageSize: 20
+                    totalItems: 50
+                    totalPages: 3
+                    hasNext: true
+                    hasPrevious: false
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+        '400':
+          description: バリデーションエラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: カテゴリが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                errorCode: CATEGORY_NOT_FOUND
+                message: "カテゴリが見つかりません: invalid_code"
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+        '500':
+          description: サーバー内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/products/categories/{categoryCode}/recommendations:
+    get:
+      tags:
+        - 商品カテゴリ
+      summary: おすすめ商品取得
+      description: |
+        指定されたカテゴリのおすすめ商品を取得します。
+        
+        ## おすすめ商品の選定基準
+        - 人気度（販売数、閲覧数）
+        - 新着度
+        - キャンペーン適用状況
+      operationId: getRecommendations
+      parameters:
+        - name: categoryCode
+          in: path
+          required: true
+          description: カテゴリコード
+          schema:
+            type: string
+          example: iphone
+      responses:
+        '200':
+          description: おすすめ商品取得成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryRecommendationResponse'
+              example:
+                success: true
+                message: おすすめ商品を取得しました
+                data:
+                  categoryCode: iphone
+                  recommendations:
+                    - productId: 1
+                      productName: iPhone 16 Pro Max
+                      imageUrl: https://example.com/images/iphone16promax.jpg
+                      price: 189800
+                      monthlyPayment: 5500
+                      recommendationReason: 最新モデル
+                    - productId: 2
+                      productName: iPhone 16 Pro
+                      imageUrl: https://example.com/images/iphone16pro.jpg
+                      price: 159800
+                      monthlyPayment: 4500
+                      recommendationReason: 人気No.1
+                timestamp: "2024-12-14T00:00:00Z"
+                requestId: 550e8400-e29b-41d4-a716-446655440000
+        '404':
+          description: カテゴリが見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: サーバー内部エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT認証トークン。
+        `/api/v1/auth/login`エンドポイントで取得したアクセストークンを使用します。
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: メールアドレス
+          example: user@example.com
+        password:
+          type: string
+          format: password
+          minLength: 6
+          maxLength: 100
+          description: パスワード（6文字以上100文字以下）
+          example: password123
+        rememberMe:
+          type: boolean
+          default: false
+          description: ログイン状態を維持するかどうか（有効時はトークン有効期限が7倍に延長）
+          example: false
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: アクセストークン（JWT）
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        refreshToken:
+          type: string
+          description: リフレッシュトークン（JWT）
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        tokenType:
+          type: string
+          description: トークンタイプ
+          example: Bearer
+        expiresIn:
+          type: integer
+          format: int64
+          description: アクセストークンの有効期限（秒）
+          example: 3600
+        user:
+          $ref: '#/components/schemas/UserResponse'
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ユーザーID
+          example: "1"
+        name:
+          type: string
+          description: ユーザー名
+          example: テストユーザー
+        email:
+          type: string
+          format: email
+          description: メールアドレス
+          example: user@example.com
+
+    CategoryListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ
+          example: true
+        message:
+          type: string
+          description: メッセージ
+          example: カテゴリ一覧を取得しました
+        data:
+          type: object
+          properties:
+            categories:
+              type: array
+              items:
+                $ref: '#/components/schemas/CategorySummary'
+        timestamp:
+          type: string
+          format: date-time
+          description: レスポンス日時
+          example: "2024-12-14T00:00:00Z"
+        requestId:
+          type: string
+          format: uuid
+          description: リクエストID
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+    CategorySummary:
+      type: object
+      properties:
+        categoryCode:
+          type: string
+          description: カテゴリコード
+          example: iphone
+        displayName:
+          type: string
+          description: 表示名
+          example: iPhone
+        displayOrder:
+          type: integer
+          description: 表示順序
+          example: 1
+
+    CategoryDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ
+          example: true
+        message:
+          type: string
+          description: メッセージ
+          example: カテゴリ詳細を取得しました
+        data:
+          type: object
+          properties:
+            category:
+              $ref: '#/components/schemas/CategoryInfo'
+            products:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProductItem'
+        meta:
+          type: object
+          properties:
+            pagination:
+              $ref: '#/components/schemas/Pagination'
+        timestamp:
+          type: string
+          format: date-time
+          description: レスポンス日時
+          example: "2024-12-14T00:00:00Z"
+        requestId:
+          type: string
+          format: uuid
+          description: リクエストID
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+    CategoryInfo:
+      type: object
+      properties:
+        categoryCode:
+          type: string
+          description: カテゴリコード
+          example: iphone
+        displayName:
+          type: string
+          description: 表示名
+          example: iPhone
+        heroImageUrl:
+          type: string
+          format: uri
+          description: ヒーロー画像URL
+          example: https://example.com/images/iphone-hero.jpg
+        leadText:
+          type: string
+          description: リードテキスト
+          example: 最新のiPhoneをお選びください
+
+    ProductItem:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        productName:
+          type: string
+          description: 商品名
+          example: iPhone 16 Pro Max
+        imageUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: 商品画像URL一覧
+          example:
+            - https://example.com/images/iphone16promax.jpg
+        monthlyPayment:
+          type: integer
+          description: 月額支払い金額（円）
+          example: 5500
+        campaigns:
+          type: array
+          items:
+            $ref: '#/components/schemas/CampaignBadge'
+        colorOptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ColorOption'
+        storageOptions:
+          type: array
+          items:
+            type: string
+          description: ストレージオプション一覧
+          example:
+            - 256GB
+            - 512GB
+            - 1TB
+
+    CampaignBadge:
+      type: object
+      properties:
+        campaignCode:
+          type: string
+          description: キャンペーンコード
+          example: NEW
+        badgeText:
+          type: string
+          description: バッジテキスト
+          example: 新製品
+
+    ColorOption:
+      type: object
+      properties:
+        name:
+          type: string
+          description: カラー名
+          example: ナチュラルチタニウム
+        hex:
+          type: string
+          pattern: "^#[0-9A-Fa-f]{6}$"
+          description: カラーコード（16進数）
+          example: "#C4B8A5"
+
+    Pagination:
+      type: object
+      properties:
+        currentPage:
+          type: integer
+          description: 現在のページ番号（0始まり）
+          example: 0
+        pageSize:
+          type: integer
+          description: 1ページあたりの件数
+          example: 20
+        totalItems:
+          type: integer
+          description: 総件数
+          example: 50
+        totalPages:
+          type: integer
+          description: 総ページ数
+          example: 3
+        hasNext:
+          type: boolean
+          description: 次のページが存在するか
+          example: true
+        hasPrevious:
+          type: boolean
+          description: 前のページが存在するか
+          example: false
+
+    CategoryRecommendationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ
+          example: true
+        message:
+          type: string
+          description: メッセージ
+          example: おすすめ商品を取得しました
+        data:
+          type: object
+          properties:
+            categoryCode:
+              type: string
+              description: カテゴリコード
+              example: iphone
+            recommendations:
+              type: array
+              items:
+                $ref: '#/components/schemas/RecommendedProduct'
+        timestamp:
+          type: string
+          format: date-time
+          description: レスポンス日時
+          example: "2024-12-14T00:00:00Z"
+        requestId:
+          type: string
+          format: uuid
+          description: リクエストID
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+    RecommendedProduct:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        productName:
+          type: string
+          description: 商品名
+          example: iPhone 16 Pro Max
+        imageUrl:
+          type: string
+          format: uri
+          description: 商品画像URL
+          example: https://example.com/images/iphone16promax.jpg
+        price:
+          type: integer
+          description: 価格（円）
+          example: 189800
+        monthlyPayment:
+          type: integer
+          description: 月額支払い金額（円）
+          example: 5500
+        recommendationReason:
+          type: string
+          description: おすすめ理由
+          example: 最新モデル
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: 処理成功フラグ（常にfalse）
+          example: false
+        errorCode:
+          type: string
+          description: エラーコード
+          enum:
+            - AUTHENTICATION_FAILED
+            - VALIDATION_ERROR
+            - CATEGORY_NOT_FOUND
+            - TYPE_MISMATCH
+            - INTERNAL_SERVER_ERROR
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          description: エラーメッセージ
+          example: 入力値が不正です
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+          description: フィールドごとのエラーメッセージ（バリデーションエラー時のみ）
+          example:
+            email: メールアドレスは必須です
+            password: パスワードは6文字以上100文字以下で入力してください
+        timestamp:
+          type: string
+          format: date-time
+          description: エラー発生日時
+          example: "2024-12-14T00:00:00Z"
+        requestId:
+          type: string
+          format: uuid
+          description: リクエストID
+          example: 550e8400-e29b-41d4-a716-446655440000
+
+security:
+  - bearerAuth: []
