@@ -4,7 +4,7 @@
     "project_id": "ec-site-demo-frontend",
     "run_id": "ec278-mypage-account-management-v1",
     "created_at": "2026-03-04T08:00:00Z",
-    "updated_at": "2026-03-04T09:50:00Z",
+    "updated_at": "2026-03-04T10:15:00Z",
     "agent": {
       "name": "Devin",
       "plan": "Enterprise",
@@ -13,7 +13,7 @@
     "environment": {
       "repo": "satoshi-watanabe-0001/ec-site-demo-frontend",
       "branch": "devin/1772615471-ec278-mypage-account-management",
-      "commit": "ec0f44c783fd7f7ad359913bc4cbfe59682ae2be"
+      "commit": "7e84f3888f002190c8967a4fc9d23e5639e31fb7"
     }
   },
   "requirements": {
@@ -305,6 +305,92 @@
         "guidelines_checked": true,
         "notes": "全テストモックデータがTypeScript型定義と一致することを再検証"
       }
+    },
+    {
+      "step_id": "STEP-004",
+      "phase": "debug",
+      "goal": "apiRequestのcatchブロック再構造化（Devin Reviewバグ修正）",
+      "inputs": ["Devin Reviewコメント: isNetworkErrorキーワードマッチングがサーバーエラーメッセージを誤分類"],
+      "outputs": ["修正済みsrc/services/accountService.ts"],
+      "reasoning_summary": {
+        "summary": "apiRequestのcatchブロックを再構造化。fetch呼び出しのみを内側のtry/catchでラップし、レスポンス処理エラーはそのまま伝播させる。サーバーエラーメッセージに'network'/'timeout'等のキーワードが含まれる場合に誤ってネットワークエラーとして処理される問題を修正。",
+        "alternatives_considered": ["カスタムプロパティでエラーをマーク", "センチネルラッパーでfetchエラーを区別"],
+        "assumptions_used": [],
+        "risks": []
+      },
+      "decisions": [
+        {
+          "decision_id": "DEC-006",
+          "decision": "fetch呼び出しのみを内側のtry/catchでラップし、レスポンス処理エラーをcatchブロック外に移動",
+          "rationale": "最もシンプルかつ明確な分離。fetch自体の失敗のみがネットワークエラーとして扱われ、サーバーレスポンスエラーは常にそのまま伝播する",
+          "req_links": ["REQ-005"]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "run_log",
+          "ref": "pnpm run type-check && pnpm format:check",
+          "result": "エラーなし"
+        },
+        {
+          "type": "run_log",
+          "ref": "CI checks (9/9 pass)",
+          "result": "quality-check, validate-pr-description, build-and-test, 日本語記載チェック, remind-checklist, security-scan, CodeQL 全パス"
+        }
+      ],
+      "self_checks": {
+        "consistency_checked": true,
+        "guidelines_checked": true,
+        "notes": "fetchレベルのネットワークエラーとサーバーレスポンスエラーの分離を確認"
+      }
+    },
+    {
+      "step_id": "STEP-005",
+      "phase": "test",
+      "goal": "ブラウザでのE2E動作確認（ログイン→ダッシュボード→請求→契約）",
+      "inputs": ["ローカルdev環境（pnpm run dev）", "MSWモックAPI"],
+      "outputs": ["テスト録画ファイル", "スクリーンショット4枚"],
+      "reasoning_summary": {
+        "summary": "enableMocking()がアプリ内で未呼出のため一時的なMSWProviderを追加してdev環境を起動。ログイン→ダッシュボード→請求ページ→契約ページの一連のフローをブラウザで確認。請求ページでsummary ¥3,470 = breakdown合計 ¥3,470の整合性を目視確認。テスト後に一時変更を全てリバート。",
+        "alternatives_considered": [],
+        "assumptions_used": ["ASM-001", "ASM-002"],
+        "risks": ["enableMocking()が本番コードで未統合のため、ユーザーがローカルテスト時に同様のセットアップが必要"]
+      },
+      "decisions": [
+        {
+          "decision_id": "DEC-007",
+          "decision": "テスト用に一時的なMSWProviderコンポーネントを作成し、テスト後にリバート",
+          "rationale": "PR本体に影響を与えずに動作確認を実施するため",
+          "req_links": ["REQ-001", "REQ-002", "REQ-005"]
+        }
+      ],
+      "evidence": [
+        {
+          "type": "run_log",
+          "ref": "ブラウザテスト: ログインページ",
+          "result": "test@docomo.ne.jp / password123 でログイン成功、/mypageにリダイレクト"
+        },
+        {
+          "type": "run_log",
+          "ref": "ブラウザテスト: ダッシュボード",
+          "result": "プラン(ahamo ¥2,970)、データ使用量(12.5GB/20GB)、請求(¥3,470)、端末(iPhone 15 Pro)、通知 正常表示"
+        },
+        {
+          "type": "run_log",
+          "ref": "ブラウザテスト: 請求ページ",
+          "result": "Summary ¥3,470 = Breakdown合計 ¥3,470 整合性確認OK"
+        },
+        {
+          "type": "run_log",
+          "ref": "ブラウザテスト: 契約ページ",
+          "result": "プラン詳細、端末情報、SIM情報、オプション 正常表示"
+        }
+      ],
+      "self_checks": {
+        "consistency_checked": true,
+        "guidelines_checked": true,
+        "notes": "請求内訳合計とsummary金額の一致を目視確認。テスト用一時変更は全てリバート済み"
+      }
     }
   ],
   "guidelines": {
@@ -335,7 +421,7 @@
         "rule_id": "RULE-004",
         "description": "CI品質ゲートが全て通過",
         "status": "pass",
-        "evidence_ref": "8 CI checks passed",
+        "evidence_ref": "9 CI checks passed (commit 7e84f38)",
         "step_id": "STEP-003"
       },
       {
@@ -372,6 +458,24 @@
       "detected_at_step": "STEP-003",
       "recovered": true,
       "root_cause": "モックデータ作成時にかけ放題オプション料金を内訳に含めたが、summary金額には含めなかった"
+    },
+    {
+      "dev_id": "DEV-003",
+      "type": "spec_violation",
+      "severity": "medium",
+      "description": "apiRequestのcatchブロックでisNetworkError()がサーバーエラーメッセージ中の'network'/'timeout'キーワードを誤検知し、サーバーエラーを汎用ネットワークエラーメッセージに置換",
+      "detected_at_step": "STEP-004",
+      "recovered": true,
+      "root_cause": "catchブロックが全エラーを一括処理しており、fetch自体の失敗とレスポンス処理エラーを区別していなかった"
+    },
+    {
+      "dev_id": "DEV-004",
+      "type": "process_skip",
+      "severity": "low",
+      "description": "enableMocking()がアプリのエントリーポイントで未呼出のため、ローカルdev環境でMSWが動作しない",
+      "detected_at_step": "STEP-005",
+      "recovered": true,
+      "root_cause": "MSW初期化コード(src/lib/msw.ts)はexportされているが、layout.tsxやプロバイダーから呼び出されていない。テスト時に一時的なMSWProviderを作成して対応"
     }
   ],
   "checks": {
@@ -383,7 +487,7 @@
           "severity": "none"
         }
       ],
-      "delta_summary": "型修正後のテスト結果に差異なし。全テストが安定してパス"
+      "delta_summary": "型修正後・apiRequest修正後のテスト結果に差異なし。全442テストが安定してパス。ブラウザテストでも請求データ整合性を確認"
     },
     "consistency": {
       "issues": []
@@ -398,19 +502,19 @@
         "terminology": 0.9,
         "actionability": 0.85
       },
-      "notes": "PR説明に7セクション全て記載。テスト手順・レビュー推奨事項を明記"
+      "notes": "PR説明に7セクション全て記載。テスト手順・レビュー推奨事項を明記。ブラウザテストで主要フローの動作を目視確認済み"
     }
   },
   "final": {
-    "summary": "EC-278アカウント管理ポータルを包括的に実装。30ファイル、+5,200行。8つのマイページルート、12のMSWエンドポイント、6つのコンポーネント、442テスト全パス、CI全チェック通過。Devin Reviewの5つのバグ指摘を全て修正済み。",
-    "decision_map": ["DEC-001", "DEC-002", "DEC-003", "DEC-004", "DEC-005"],
+    "summary": "EC-278アカウント管理ポータルを包括的に実装。30ファイル、+5,200行。8つのマイページルート、12のMSWエンドポイント、6つのコンポーネント、442テスト全パス、CI 9チェック全通過。Devin Reviewの6つのバグ指摘（ネットワークエラー処理、支払いステータス色、契約ステータス色、認証ガードisReady、請求内訳合計、apiRequest catchブロック）を全て修正。ブラウザでLogin→Dashboard→Billing→Contractの動作確認を実施し、請求データ整合性(¥3,470)を目視確認済み。",
+    "decision_map": ["DEC-001", "DEC-002", "DEC-003", "DEC-004", "DEC-005", "DEC-006", "DEC-007"],
     "known_limits": [
       "E2Eテストのセレクターが実際のDOMと一致するかは未検証",
-      "ローカル環境での動作確認は未実施",
+      "enableMocking()がアプリ内で未呼出のため、ローカルテストにはMSWProvider追加が必要",
       "モックトークン方式のため本番認証フローとは異なる"
     ],
     "next_actions": [
-      "レビュアーによるローカル動作確認",
+      "enableMocking()のアプリ統合（MSWProviderの正式追加）",
       "E2Eテスト実行と結果確認",
       "本番認証フローへの移行計画策定"
     ]
